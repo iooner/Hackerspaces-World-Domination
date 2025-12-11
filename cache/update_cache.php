@@ -1,12 +1,7 @@
 <?php
-/**
- * Cache Intelligent pour Hackerspaces Globe
- * 
- * Ce script parcourt le directory SpaceApi et met en cache les données
- * États possibles : 'down', 'open', 'closed'
- */
+//Cache "Intelligent" pour Hackerspaces World Domination
 
-// Augmenter la limite de temps d'exécution
+// Gestion de la limite d'execution
 set_time_limit(300);        // 5 minutes
 ini_set('max_execution_time', '300');
 
@@ -25,7 +20,7 @@ if (!is_dir($cacheDir)) {
 
 echo "\n";
 echo "╔════════════════════════════════════════════════════════════════╗\n";
-echo "║          🌍 HACKERSPACES WORLD DOMINATION - CACHE             ║\n";
+echo "║          🌍 HACKERSPACES WORLD DOMINATION - CACHE              ║\n";
 echo "╚════════════════════════════════════════════════════════════════╝\n";
 echo "\n";
 
@@ -93,7 +88,7 @@ function geocodeHackerspace($name) {
     $searchQuery = $name . ' hackerspace';
     $searchQuery = urlencode($searchQuery);
     
-    // Nominatim API (gratuit, rate limit: 1 req/sec)
+    // Nominatim API (gratuit, rate limit: 1 req/sec !!!)
     $url = "https://nominatim.openstreetmap.org/search?q={$searchQuery}&format=json&limit=1";
     
     // Headers requis par Nominatim
@@ -129,7 +124,7 @@ function fetchSpaceData($name, $apiUrl, $timeout) {
         'http' => [
             'timeout' => $timeout,
             'method' => 'GET',
-            'header' => "User-Agent: HackerspacesGlobe/1.0\r\n"
+            'header' => "User-Agent: HSWD hswd.iooner.io/1.0\r\n"
         ]
     ]);
     
