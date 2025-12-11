@@ -1,4 +1,4 @@
 # Hackerspaces-World-Domination
-https://hswd.iooner.io
+Prod: https://hswd.iooner.io
 
-https://iooner.io/hswd/
+Doc: https://iooner.io/hswd/
