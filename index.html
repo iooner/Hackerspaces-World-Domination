@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hackerspaces World Domination 🌍</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            overflow: hidden;
+            background: #0f1729;
+            color: white;
+        }
+
+        #globeViz {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #info {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+            padding: 12px 24px;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        #info h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            white-space: nowrap;
+        }
+
+        .filters {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            color: #e2e8f0;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+
+        .filter-btn:hover {
+            background: rgba(30, 41, 59, 0.8);
+            border-color: rgba(148, 163, 184, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .filter-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: #667eea;
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        #stats-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(20px);
+            padding: 12px 24px;
+            border-top: 1px solid rgba(148, 163, 184, 0.2);
+            font-size: 0.75rem;
+            color: #94a3b8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .footer-left {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .footer-right {
+            color: #64748b;
+            font-size: 0.7rem;
+            white-space: nowrap;
+        }
+
+        .footer-right a {
+            color: #818cf8;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer-right a:hover {
+            color: #a5b4fc;
+            text-decoration: underline;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: help;
+        }
+
+        .stat-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .stat-dot.open { background: #10b981; }
+        .stat-dot.closed { background: #ef4444; }
+        .stat-dot.down { background: #f59e0b; }
+        .stat-dot.static { background: #3b82f6; }
+
+        .stat-value {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: white;
+        }
+
+        .cache-info {
+            font-size: 0.65rem;
+            color: #64748b;
+        }
+
+        #selected-info {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            max-width: 320px;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(30px);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 12px;
+            padding: 16px;
+            color: white;
+            display: none;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        #selected-info.open { 
+            border-color: rgba(16, 185, 129, 0.5);
+            box-shadow: 0 8px 32px rgba(16, 185, 129, 0.25);
+        }
+        
+        #selected-info.closed { 
+            border-color: rgba(239, 68, 68, 0.5);
+            box-shadow: 0 8px 32px rgba(239, 68, 68, 0.25);
+        }
+
+        #selected-info h3 {
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+        }
+
+        .status-badge {
+            font-size: 0.65rem;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.open {
+            background: #10b981;
+            color: white;
+        }
+
+        .status-badge.closed {
+            background: #ef4444;
+            color: white;
+        }
+
+        .status-badge.unknown {
+            background: #ffffff;
+            color: #1e293b;
+        }
+
+        .status-badge.static {
+            background: #3b82f6;
+            color: white;
+        }
+
+        #selected-info p {
+            color: #cbd5e1;
+            font-size: 0.85rem;
+            margin: 6px 0;
+            line-height: 1.5;
+        }
+
+        #selected-info a {
+            color: #60a5fa;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 10px;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        #selected-info a:hover {
+            color: #93c5fd;
+        }
+
+        .close-btn {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(148, 163, 184, 0.1);
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 1.2rem;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            background: rgba(148, 163, 184, 0.2);
+            color: white;
+        }
+
+        /* Modal About */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            padding: 30px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            color: white;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-content h2 {
+            margin-top: 0;
+            color: #e2e8f0;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+        }
+
+        .modal-content h3 {
+            color: #94a3b8;
+            font-size: 1.1rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .modal-content p {
+            color: #cbd5e1;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .modal-content ul {
+            color: #cbd5e1;
+            line-height: 1.8;
+            padding-left: 20px;
+        }
+
+        .modal-content a {
+            color: #818cf8;
+            text-decoration: none;
+        }
+
+        .modal-content a:hover {
+            color: #a5b4fc;
+            text-decoration: underline;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            color: #94a3b8;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .modal-close:hover {
+            color: #e2e8f0;
+        }
+
+        #about-btn {
+            cursor: pointer;
+        }
+
+        /* Mobile optimization */
+        @media (max-width: 768px) {
+            #info {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 10px 16px;
+            }
+
+            #info h1 {
+                font-size: 1rem;
+                white-space: normal;
+            }
+
+            .filters {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .filter-btn {
+                font-size: 0.65rem;
+                padding: 3px 8px;
+            }
+
+            #stats-panel {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 10px 16px;
+            }
+
+            .footer-left {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .stats-row {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .footer-right {
+                white-space: normal;
+                font-size: 0.65rem;
+                line-height: 1.4;
+            }
+
+            .modal-content {
+                margin: 10px;
+                padding: 20px;
+                max-height: 90vh;
+            }
+        }
+    </style>
+    <script defer src="https://cloud.umami.is/script.js" data-website-id="cc23e12a-7559-4048-b5dd-a8166c7f5519"></script>
+</head>
+<body>
+    <div id="info">
+        <h1>🌍 Hackerspaces World Domination</h1>
+        
+        <div class="filters">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="open">Open only</button>
+        </div>
+    </div>
+
+    <div id="stats-panel">
+        <div class="footer-left">
+            <div class="stats-row">
+                <div class="stat-item" title="Open SpaceAPI">
+                    <span class="stat-dot open"></span>
+                    <span class="stat-value" id="open-count">0</span>
+                </div>
+                <div class="stat-item" title="Closed SpaceAPI">
+                    <span class="stat-dot closed"></span>
+                    <span class="stat-value" id="closed-count">0</span>
+                </div>
+                <div class="stat-item" title="Geolocated Wiki + MapAll">
+                    <span class="stat-dot static"></span>
+                    <span class="stat-value" id="static-count">0</span>
+                </div>
+                <div class="stat-item" title="API unavailable">
+                    <span class="stat-dot down"></span>
+                    <span class="stat-value" id="down-count">0</span>
+                </div>
+                <div class="stat-item" title="Total displayable">
+                    <span style="color: #94a3b8; margin-right: 4px;">📊</span>
+                    <span class="stat-value" id="total-count">0</span>
+                </div>
+            </div>
+            <div class="cache-info" id="cache-info"></div>
+        </div>
+        <div class="footer-right">
+            <a href="#" id="about-btn">About</a> - Crafted with love in 🇧🇪 by <a href="https://iooner.io" target="_blank" rel="noopener noreferrer">iooner</a> @ <a href="https://lghs.be" target="_blank" rel="noopener noreferrer">Liège Hackerspace</a>
+        </div>
+    </div>
+
+    <div id="about-modal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h2>🌍 Hackerspaces World Domination</h2>
+            <p>An interactive 3D globe visualization of hackerspaces around the world, powered by the 
+                <a href="https://spaceapi.io/" target="_blank" rel="noopener noreferrer">SpaceAPI</a> directory, inspired by <a href="https://mapall.space/about.php" target="_blank" rel="noopener noreferrer">mapall.space</a></p>
+            
+            <h3>Features</h3>
+            <ul>
+                <li><strong>Real-time Status</strong> - Visual indicators for open/closed/unknown states</li>
+                <li><strong>Smart Caching</strong> - Spaces stay visible for 30 days even if API is down</li>
+                <li><strong>Collision Detection</strong> - Automatic adjustment for overlapping locations</li>
+                <li><strong>Live Statistics</strong> - Real-time counters and filters</li>
+                <li><strong>Geocoding</strong> - OpenStreetMap Nominatim</li>
+            </ul>
+
+            <h3>Status Colors</h3>
+            <ul>
+                <li>🟢 <strong>Green</strong> - Hackerspace is currently open</li>
+                <li>🔴 <strong>Red</strong> - Hackerspace is currently closed</li>
+                <li>⚪ <strong>White</strong> - Status unknown (API temporarily unavailable)</li>
+                <li>🔵 <strong>Blue</strong> - Static data from <a href="https://wiki.hackerspaces.org" target="_blank" rel="noopener noreferrer">wiki.hackerspaces.org</a> and <a href="https://mapall.space" target="_blank" rel="noopener noreferrer">mapall.space</a></li>
+            </ul>
+
+            <h3>Why no FabLabs? 🤔</h3>
+            <p>
+                This is <strong>Hackerspaces</strong> World Domination, not FabLabs World Collaboration. 
+                We're dead serious about our chaos here. 😏
+            </p>
+            <p>
+                That said, if your space identifies as a hackerspace and wants to join the domination. 
+                Add yourself to <a href="https://spaceapi.io/" target="_blank" rel="noopener noreferrer">SpaceAPI</a> or register on <a href="https://wiki.hackerspaces.org/" target="_blank" rel="noopener noreferrer">wiki</a> (follow their guidelines).
+            </p>
+            <p style="font-size: 0.9em; color: #94a3b8;">
+                <em>We don't manually curate the list, if you're in SpaceAPI or the wiki, you're in.</em>
+            </p>
+
+            <p style="margin-top: 20px;">
+                <strong>Read more:</strong> <a href="https://iooner.io/hswd" target="_blank" rel="noopener noreferrer">Full article on iooner.io →</a>
+            </p>
+
+            <p style="margin-top: 15px; font-size: 0.75em; color: #64748b; font-style: italic;">
+                Initial spark of inspiration came from <a href="https://www.raiseglobe.com/" target="_blank" rel="noopener noreferrer">raiseglobe.com</a>
+            </p>
+
+            <p style="margin-top: 20px; font-size: 0.9em; color: #94a3b8;">
+                Crafted with ❤️ in 🇧🇪 by <a href="https://iooner.io" target="_blank" rel="noopener noreferrer">iooner</a> @ <a href="https://lghs.be" target="_blank" rel="noopener noreferrer">Liège Hackerspace</a>
+            </p>
+        </div>
+    </div>
+
+    <div id="selected-info">
+        <h3 id="space-name"></h3>
+        <div id="space-details"></div>
+        <button class="close-btn" onclick="closeInfo()">✕</button>
+    </div>
+
+    <div id="globeViz"></div>
+
+    <script src="//unpkg.com/globe.gl"></script>
+    <script src="//unpkg.com/topojson-client@3"></script>
+    <script>
+        let allSpaces = [];
+        let currentFilter = 'all';
+        let globe;
+
+        const stateColors = {
+            open: '#10b981',
+            closed: '#ef4444',
+            unknown: '#ffffff',
+            static: '#3b82f6'
+        };
+
+        globe = Globe()
+            .backgroundColor('#0f1729')
+            .showGlobe(true)
+            .globeImageUrl(null)
+            .showAtmosphere(true)
+            .atmosphereColor('#4a5568')
+            .atmosphereAltitude(0.12)
+            .pointLat('lat')
+            .pointLng('lon')
+            .pointLabel('name')
+            .pointColor(d => stateColors[d.state])
+            .pointAltitude(d => {
+                if (d.state === 'open') return 0.015; //15
+                if (d.state === 'closed') return 0.012; //12
+                if (d.state === 'unknown') return 0.011; //11
+                if (d.state === 'static') return 0.010; //10
+                return 0.012; //12
+            })
+            .pointRadius(d => {
+                return 0.08;
+            })
+            .pointsTransitionDuration(0)
+            .onPointClick(point => { 
+                if (point) showSpaceInfo(point); 
+            })
+            (document.getElementById('globeViz'));
+
+        globe.pointOfView({
+            lat: 45,
+            lng: 15,
+            altitude: 1
+        }, 0);
+
+        const controls = globe.controls();
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        fetch('//unpkg.com/world-atlas/countries-110m.json')
+            .then(res => res.json())
+            .then(worldData => {
+                const countries = topojson.feature(worldData, worldData.objects.countries);
+                
+                globe
+                    .polygonsData(countries.features)
+                    .polygonCapColor(() => '#3a4a5a')
+                    .polygonSideColor(() => '#2a3a4a')
+                    .polygonStrokeColor(() => '#5a6a7a')
+                    .polygonAltitude(0.01);
+            });
+
+        let rotationTimeout;
+        
+        controls.addEventListener('start', () => {
+            controls.autoRotate = false;
+            clearTimeout(rotationTimeout);
+        });
+
+        controls.addEventListener('end', () => {
+            clearTimeout(rotationTimeout);
+            rotationTimeout = setTimeout(() => {
+                controls.autoRotate = true;
+            }, 7000);
+        });
+
+        async function loadFromCache() {
+            try {
+                document.getElementById('cache-info').textContent = '⏳ Chargement...';
+                
+                const response = await fetch('api.php');
+                if (!response.ok) throw new Error('Cache indisponible');
+                const data = await response.json();
+                if (data.error) throw new Error(data.message);
+
+                allSpaces = data.spaces;
+
+                document.getElementById('open-count').textContent = data.stats.open;
+                document.getElementById('closed-count').textContent = data.stats.closed;
+                document.getElementById('static-count').textContent = data.stats.static || 0;
+                document.getElementById('down-count').textContent = data.stats.down;
+                document.getElementById('total-count').textContent = data.spaces.length;
+                document.getElementById('cache-info').textContent = `Updated ${data.cache_age_text}`;
+
+                applyFilter();
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('cache-info').textContent = '❌ Error: ' + error.message;
+                document.getElementById('cache-info').style.color = '#ef4444';
+            }
+        }
+
+        function applyFilter() {
+            let filtered = allSpaces;
+            if (currentFilter === 'open') {
+                filtered = allSpaces.filter(s => s.state === 'open');
+            }
+            globe.pointsData(filtered);
+        }
+
+        function showSpaceInfo(space) {
+            const infoDiv = document.getElementById('selected-info');
+            infoDiv.className = space.state;
+            
+            let statusText, statusClass;
+            if (space.state === 'open') {
+                statusText = 'OPEN';
+                statusClass = 'open';
+            } else if (space.state === 'closed') {
+                statusText = 'CLOSED';
+                statusClass = 'closed';
+            } else if (space.state === 'static') {
+                statusText = 'STATIC';
+                statusClass = 'static';
+            } else {
+                statusText = 'UNKNOWN';
+                statusClass = 'unknown';
+            }
+            
+            document.getElementById('space-name').innerHTML = 
+                `${space.name} <span class="status-badge ${statusClass}">${statusText}</span>`;
+            
+            let details = '';
+            if (space.city) {
+                details += `<p>📍 ${space.city}${space.country ? ', ' + space.country : ''}</p>`;
+            }
+            details += `<p>🌐 ${space.lat.toFixed(4)}, ${space.lon.toFixed(4)}</p>`;
+            
+            if (space.state === 'unknown' && space.last_seen) {
+                const lastSeen = new Date(space.last_seen);
+                const now = new Date();
+                const daysSince = Math.floor((now - lastSeen) / (1000 * 60 * 60 * 24));
+                details += `<p>⚠️ Last seen: ${daysSince} day${daysSince > 1 ? 's' : ''} ago</p>`;
+            } else if (space.lastchange) {
+                const lastChange = new Date(space.lastchange * 1000);
+                details += `<p>🕒 ${lastChange.toLocaleString('en-US')}</p>`;
+            }
+            
+            if (space.url) {
+                details += `<a href="${space.url}" target="_blank" rel="noopener noreferrer">🔗 Visit →</a>`;
+            }
+            document.getElementById('space-details').innerHTML = details;
+            infoDiv.style.display = 'block';
+        }
+
+        function closeInfo() {
+            document.getElementById('selected-info').style.display = 'none';
+        }
+
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentFilter = e.target.dataset.filter;
+                applyFilter();
+            });
+        });
+
+        const modal = document.getElementById('about-modal');
+        const aboutBtn = document.getElementById('about-btn');
+        const closeBtn = document.querySelector('.modal-close');
+
+        aboutBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            modal.classList.add('show');
+        });
+
+        closeBtn.addEventListener('click', () => {
+            modal.classList.remove('show');
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.remove('show');
+            }
+        });
+
+        loadFromCache();
+    </script>
+</body>
+</html>
