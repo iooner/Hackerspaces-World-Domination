@@ -1,2 +1,2 @@
 # Hackerspaces-World-Domination
-hswd.iooner.io
+https://hswd.iooner.io
