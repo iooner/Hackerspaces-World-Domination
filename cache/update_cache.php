@@ -124,7 +124,7 @@ function fetchSpaceData($name, $apiUrl, $timeout) {
         'http' => [
             'timeout' => $timeout,
             'method' => 'GET',
-            'header' => "User-Agent: HSWD hswd.iooner.io/1.0\r\n"
+            'header' => "User-Agent: HSWD hswd.iooner.io/1.1\r\n"
         ]
     ]);
     
