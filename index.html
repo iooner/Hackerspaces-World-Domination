@@ -1106,9 +1106,10 @@
         });
         modal.querySelector('.modal-close').addEventListener('click', () => modal.classList.remove('show'));
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('show'); });
+        // Escape global : ferme tout ce qui est ouvert
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                modal.classList.remove('show');
+                document.querySelectorAll('.modal').forEach(m => m.classList.remove('show'));
                 document.getElementById('space-card').className = '';
             }
         });
