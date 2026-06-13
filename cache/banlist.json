@@ -1,0 +1,17 @@
+{
+  "_comment": "Manual ban list",
+  "spaces": [
+    {
+      "name": "NSHkr",
+      "reason": "Domain nshkr.com AI stuff now ?",
+      "since": "2026-06"
+    }
+  ],
+  "domains": [
+    {
+      "domain": "nshkr.com",
+      "reason": "Domain nshkr.com AI stuff now ?",
+      "since": "2026-06"
+    }
+  ]
+}

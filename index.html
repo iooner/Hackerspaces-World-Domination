@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hackerspaces World Domination 🌍</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+    <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script defer src="https://cloud.umami.is/script.js" data-website-id="cc23e12a-7559-4048-b5dd-a8166c7f5519"></script>
+
+    <style>
+        :root {
+            --bg: #070B14;
+            --ocean: #0B1322;
+            --land: #1C2940;
+            --line: #35496B;
+            --panel: rgba(10, 16, 30, 0.92);
+            --panel-border: rgba(73, 97, 138, 0.35);
+            --text: #C7D3E4;
+            --dim: #5F7392;
+            --open: #2EE6A8;
+            --limited: #FFD23F;
+            --closed: #FF5566;
+            --unknown: #E9EEF5;
+            --static: #4D9FFF;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+            font-size: 13px;
+        }
+
+        #map { position: absolute; inset: 0; }
+
+        /* ── Header : prompt terminal ─────────────────────────── */
+        #prompt {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            z-index: 10;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 10px 14px;
+            max-width: calc(100vw - 28px);
+        }
+
+        #prompt .cmdline {
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #prompt .user { color: var(--open); }
+        #prompt .path { color: var(--static); }
+        #prompt .cmd  { color: var(--text); }
+
+        .cursor {
+            display: inline-block;
+            width: 8px;
+            height: 14px;
+            background: var(--text);
+            vertical-align: text-bottom;
+            margin-left: 2px;
+            animation: blink 1.1s steps(1) infinite;
+        }
+
+        @keyframes blink { 50% { opacity: 0; } }
+
+        #prompt .filters {
+            margin-top: 8px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .filter-btn {
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--dim);
+            border-radius: 4px;
+            padding: 3px 9px;
+            cursor: pointer;
+            transition: color .15s, border-color .15s;
+        }
+
+        .filter-btn:hover { color: var(--text); border-color: var(--dim); }
+
+        .filter-btn:focus-visible {
+            outline: 2px solid var(--static);
+            outline-offset: 2px;
+        }
+
+        .filter-btn.active {
+            color: var(--open);
+            border-color: var(--open);
+        }
+
+        /* ── Status bar façon tmux ────────────────────────────── */
+        #statusbar {
+            position: absolute;
+            left: 0; right: 0; bottom: 0;
+            z-index: 10;
+            background: var(--panel);
+            border-top: 1px solid var(--panel-border);
+            display: flex;
+            align-items: center;
+            gap: 0;
+            font-size: 11.5px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        #statusbar::-webkit-scrollbar { display: none; }
+
+        .seg {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-right: 1px solid rgba(73, 97, 138, 0.25);
+            white-space: nowrap;
+        }
+
+        .seg .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            flex: none;
+        }
+
+        .seg .n {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: var(--text);
+        }
+
+        .seg .lbl { color: var(--dim); }
+
+        .seg.spacer { flex: 1; border-right: none; padding: 0; }
+
+        .seg.meta { color: var(--dim); border-right: none; }
+        .seg.meta a { color: var(--static); text-decoration: none; }
+        .seg.meta a:hover, .seg.meta a:focus-visible { text-decoration: underline; }
+
+        .dot.open    { background: var(--open); }
+        .dot.limited { background: var(--limited); }
+        .dot.closed  { background: var(--closed); }
+        .dot.unknown { background: var(--unknown); }
+        .dot.static  { background: var(--static); }
+        .dot.down    { background: #F59E0B; }
+
+        /* ── Carte d'info space ───────────────────────────────── */
+        #space-card {
+            position: absolute;
+            right: 14px;
+            bottom: 52px;
+            z-index: 20;
+            width: 320px;
+            max-width: calc(100vw - 28px);
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-left: 3px solid var(--line);
+            border-radius: 6px;
+            padding: 14px 16px;
+            display: none;
+        }
+
+        #space-card.show { display: block; }
+        #space-card.state-open   { border-left-color: var(--open); }
+        #space-card.state-limited{ border-left-color: var(--limited); }
+        #space-card.state-closed { border-left-color: var(--closed); }
+        #space-card.state-static { border-left-color: var(--static); }
+        #space-card.state-unknown{ border-left-color: var(--unknown); }
+
+        #space-card h2 {
+            font-size: 14px;
+            font-weight: 700;
+            padding-right: 28px;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+
+        #space-card .badge {
+            display: inline-block;
+            font-size: 9.5px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 6px;
+            vertical-align: 2px;
+            color: var(--bg);
+        }
+
+        .badge.open    { background: var(--open); }
+        .badge.limited { background: var(--limited); }
+        .badge.closed  { background: var(--closed); }
+        .badge.unknown { background: var(--unknown); }
+        .badge.static  { background: var(--static); }
+
+        #space-card dl {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 4px 12px;
+            font-size: 11.5px;
+        }
+
+        #space-card dt {
+            color: var(--dim);
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+
+        #space-card dd { overflow-wrap: anywhere; }
+        #space-card dd a { color: var(--static); text-decoration: none; font-variant-numeric: tabular-nums; }
+        #space-card dd a:hover, #space-card dd a:focus-visible { text-decoration: underline; }
+
+        #space-card .visit {
+            display: inline-block;
+            margin-top: 12px;
+            color: var(--static);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        #space-card .visit:hover, #space-card .visit:focus-visible { text-decoration: underline; }
+
+        #space-card .logo {
+            margin-top: 10px;
+            max-width: 96px;
+            max-height: 48px;
+            object-fit: contain;
+            display: block;
+            padding: 6px;
+            border-radius: 4px;
+            /* Damier type éditeur d'image : aucun logo ne peut s'y fondre */
+            background: repeating-conic-gradient(#C6CFDC 0% 25%, #9AA8BC 0% 50%) 0 0 / 12px 12px;
+            filter: drop-shadow(0 0 1px rgba(7, 11, 20, 0.7));
+        }
+
+        #space-card .close {
+            position: absolute;
+            top: 8px; right: 8px;
+            background: transparent;
+            border: none;
+            color: var(--dim);
+            font-family: inherit;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+        #space-card .close:hover { color: var(--text); }
+        #space-card .close:focus-visible { outline: 2px solid var(--static); }
+
+        /* ── Popups MapLibre (hover + liste cluster) ──────────── */
+        .maplibregl-popup-content {
+            background: var(--panel);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 12px;
+            border: 1px solid var(--panel-border);
+            border-radius: 5px;
+            padding: 7px 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,.5);
+        }
+        .maplibregl-popup-tip { display: none; }
+
+        /* Attribution MapLibre : au-dessus de la status bar, thème sombre */
+        .maplibregl-ctrl-bottom-right { bottom: 38px; }
+        .maplibregl-ctrl-attrib {
+            background: var(--panel) !important;
+            font-family: inherit;
+            font-size: 10px;
+        }
+        .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a { color: var(--dim) !important; }
+        .maplibregl-ctrl-attrib-button { filter: invert(0.7); }
+        .tip-msg { color: var(--dim); font-size: 11px; }
+
+        .cluster-list { list-style: none; max-height: 220px; overflow-y: auto; }
+        .cluster-list li { padding: 3px 0; }
+        .cluster-list button {
+            background: none;
+            border: none;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            text-align: left;
+        }
+        .cluster-list button:hover { color: var(--open); }
+        .cluster-list .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+        /* ── Modal About ──────────────────────────────────────── */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(4, 7, 14, 0.75);
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+
+        .modal-content {
+            background: var(--bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            max-width: 620px;
+            max-height: 82vh;
+            overflow-y: auto;
+            padding: 26px 30px;
+            position: relative;
+            margin: 14px;
+        }
+
+        .modal-content h2 { font-size: 17px; margin-bottom: 14px; }
+        .modal-content h3 {
+            font-size: 12px;
+            color: var(--dim);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin: 20px 0 8px;
+        }
+        .modal-content p { line-height: 1.65; margin-bottom: 10px; font-size: 12.5px; }
+        .modal-content ul { line-height: 1.8; padding-left: 18px; font-size: 12.5px; }
+        .modal-content a { color: var(--static); text-decoration: none; }
+        .modal-content a:hover { text-decoration: underline; }
+        .modal-content img { display: block; margin: 10px auto 0; max-width: 100%; height: auto; }
+        .modal-content .fine { font-size: 11px; color: var(--dim); font-style: italic; }
+
+        /* ── Modal Stats ────────────────────────────────────────── */
+        #stats-modal .modal-content { max-width: 780px; }
+
+        .sparkline-wrap {
+            position: relative;
+            margin: 12px 0 6px;
+            background: rgba(255,255,255,.03);
+            border: 1px solid var(--panel-border);
+            border-radius: 5px;
+            padding: 10px 8px 6px;
+        }
+        .sparkline-wrap svg { display: block; width: 100%; overflow: visible; }
+        .spark-tooltip {
+            position: absolute;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 4px;
+            padding: 5px 9px;
+            font-size: 11px;
+            pointer-events: none;
+            white-space: nowrap;
+            z-index: 10;
+            display: none;
+        }
+        .spark-label {
+            font-size: 10px;
+            color: var(--dim);
+            display: flex;
+            justify-content: space-between;
+            margin-top: 3px;
+        }
+
+        .runs-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 8px; }
+        .runs-table th { color: var(--dim); font-weight: 600; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--panel-border); letter-spacing: .05em; }
+        .runs-table td { padding: 4px 8px; border-bottom: 1px solid rgba(73,97,138,.12); vertical-align: top; }
+        .runs-table tr:last-child td { border-bottom: none; }
+        .runs-table .ts { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .runs-table .dur { color: var(--dim); font-variant-numeric: tabular-nums; }
+
+        .stat-chip {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin: 1px 2px 1px 0;
+            color: var(--bg);
+        }
+        .chip-open    { background: var(--open); }
+        .chip-limited { background: var(--limited); }
+        .chip-closed  { background: var(--closed); color: #fff; }
+        .chip-unknown { background: var(--unknown); }
+        .chip-static  { background: var(--static); }
+        .chip-down    { background: #F59E0B; }
+        .chip-expired { background: var(--dim); color: #fff; }
+        .chip-banned  { background: #9333EA; color: #fff; }
+
+        .stats-section { margin-top: 18px; }
+        .stats-section h3 { margin-bottom: 8px; }
+        .space-pill {
+            display: inline-block;
+            background: rgba(255,255,255,.05);
+            border: 1px solid var(--panel-border);
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-size: 11px;
+            margin: 2px 3px 2px 0;
+            color: var(--text);
+        }
+        .space-pill .days { color: var(--dim); font-size: 10px; margin-left: 4px; }
+        .banned-item { margin: 6px 0; font-size: 12px; }
+        .banned-item .reason { color: var(--dim); font-size: 11px; display: block; margin-top: 2px; }
+        .banned-item .gh-link { font-size: 11px; color: var(--static); text-decoration: none; }
+        .banned-item .gh-link:hover { text-decoration: underline; }
+        .stats-loading { color: var(--dim); font-size: 12px; padding: 20px 0; text-align: center; }
+
+        .modal-close {
+            position: absolute;
+            top: 12px; right: 14px;
+            background: transparent;
+            border: none;
+            color: var(--dim);
+            font-family: inherit;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .modal-close:hover { color: var(--text); }
+
+        /* ── Loading / erreur ─────────────────────────────────── */
+        #boot {
+            position: absolute;
+            inset: 0;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            transition: opacity .4s;
+        }
+        #boot.done { opacity: 0; pointer-events: none; }
+        #boot .line { color: var(--dim); font-size: 13px; }
+        #boot .line .ok { color: var(--open); }
+        #boot .line .err { color: var(--closed); }
+
+        @media (max-width: 600px) {
+            #prompt { top: 10px; left: 10px; right: 60px; padding: 6px 10px; }
+            #prompt .cmdline { font-size: 12px; }
+            .cursor { display: none; }
+            #prompt .filters { margin-top: 5px; gap: 6px; }
+            .filter-btn { font-size: 10px; padding: 2px 7px; }
+            #space-card { right: 10px; bottom: 48px; left: 10px; width: auto; }
+            .seg { padding: 7px 9px; font-size: 10.5px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .cursor { animation: none; }
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <div id="boot"><div class="line" id="boot-line">[ .. ] fetching hackerspaces…</div></div>
+
+    <header id="prompt">
+        <div class="cmdline">
+            <span class="user">iooner@hswd</span><span class="path">:~</span><span class="cmd">$ ./dominate --world</span><span class="cursor" aria-hidden="true"></span>
+        </div>
+        <div class="filters" role="group" aria-label="Filter spaces">
+            <button class="filter-btn active" data-filter="all">[ALL]</button>
+            <button class="filter-btn" data-filter="open">[OPEN]</button>
+        </div>
+    </header>
+
+    <footer id="statusbar">
+        <div class="seg" title="Open (SpaceAPI live)"><span class="dot open"></span><span class="n" id="n-open">–</span><span class="lbl">open</span></div>
+        <div class="seg" title="Open to members only (SpaceAPI live)"><span class="dot limited"></span><span class="n" id="n-limited">–</span><span class="lbl">limited</span></div>
+        <div class="seg" title="Closed (SpaceAPI live)"><span class="dot closed"></span><span class="n" id="n-closed">–</span><span class="lbl">closed</span></div>
+        <div class="seg" title="Static (wiki + mapall)"><span class="dot static"></span><span class="n" id="n-static">–</span><span class="lbl">static</span></div>
+        <div class="seg" title="Unknown (API down < 30d)"><span class="dot unknown"></span><span class="n" id="n-unknown">–</span><span class="lbl">unknown</span></div>
+        <div class="seg" title="Lost — API down + geocoding failed, not displayed"><span class="dot down"></span><span class="n" id="n-down">–</span><span class="lbl">down</span></div>
+        <div class="seg" title="Total displayed"><span class="lbl">Σ</span><span class="n" id="n-total">–</span></div>
+        <div class="seg spacer"></div>
+        <div class="seg meta" id="cache-info"></div>
+        <div class="seg meta">
+            <a href="#" id="stats-btn">stats</a>&nbsp;· <a href="#" id="about-btn">about</a>&nbsp;· Crafted with ❤️ in 🇧🇪 by <a href="https://iooner.io/" target="_blank" rel="noopener noreferrer">iooner</a>&nbsp;@ <a href="https://lghs.be/" target="_blank" rel="noopener noreferrer">Liège Hackerspace</a>
+        </div>
+    </footer>
+
+    <aside id="space-card" aria-live="polite">
+        <button class="close" aria-label="Close panel">✕</button>
+        <h2 id="card-name"></h2>
+        <dl id="card-fields"></dl>
+        <a class="visit" id="card-url" target="_blank" rel="noopener noreferrer" style="display:none">→ visit website</a>
+        <img class="logo" id="card-logo" alt="" style="display:none">
+    </aside>
+
+    <div id="stats-modal" class="modal" role="dialog" aria-modal="true">
+        <div class="modal-content">
+            <button class="modal-close" aria-label="Close">✕</button>
+            <h2>📈 Pipeline stats</h2>
+            <div id="stats-body"><p class="stats-loading">Loading…</p></div>
+        </div>
+    </div>
+
+    <div id="about-modal" class="modal" role="dialog" aria-modal="true">
+        <div class="modal-content">
+            <button class="modal-close" aria-label="Close">✕</button>
+            <h2>🌍 Hackerspaces World Domination</h2>
+            <p><em>A live map of hackerspaces around the world.</em></p>
+
+            <p>This globe aggregates data from two sources:
+                <a href="https://spaceapi.io/" target="_blank" rel="noopener noreferrer">SpaceAPI</a> — a real-time open API standard that hackerspaces use to publish their status —
+                and <a href="https://mapall.space/" target="_blank" rel="noopener noreferrer">mapall.space</a>, which compiles static data from
+                <a href="https://wiki.hackerspaces.org/" target="_blank" rel="noopener noreferrer">wiki.hackerspaces.org</a>.
+                SpaceAPI spaces update every few hours; wiki spaces are static and shown in blue.</p>
+
+            <h3>Status colors</h3>
+            <ul>
+                <li>🟢 <strong>Green</strong> — currently open (SpaceAPI live)</li>
+                <li>🟡 <strong>Yellow</strong> — open to members only, via the <code>open_to_visitors</code> field
+                    (<a href="https://github.com/SpaceApi/schema/issues/133" target="_blank" rel="noopener noreferrer">proposed for SpaceAPI schema v16 ↗</a>)</li>
+                <li>🔴 <strong>Red</strong> — currently closed (SpaceAPI live)</li>
+                <li>⚪ <strong>White</strong> — status unknown; API temporarily unavailable, space kept visible for 30 days</li>
+                <li>🔵 <strong>Blue</strong> — static data from wiki.hackerspaces.org / mapall.space, no live status</li>
+                <li>🟠 <strong>Orange (footer)</strong> — spaces whose API has been unreachable for over 30 days and have been removed from the map</li>
+            </ul>
+
+            <h3>My space isn't on the map 🗺️</h3>
+            <p>Two ways to get listed:</p>
+            <ul>
+                <li><strong>SpaceAPI</strong> — implement the <a href="https://spaceapi.io/" target="_blank" rel="noopener noreferrer">SpaceAPI standard</a> and submit your endpoint to the <a href="https://directory.spaceapi.io/" target="_blank" rel="noopener noreferrer">directory</a>. You'll get a live colored dot and real-time status.</li>
+                <li><strong>Wiki</strong> — register on <a href="https://wiki.hackerspaces.org/" target="_blank" rel="noopener noreferrer">wiki.hackerspaces.org</a> following their guidelines. You'll appear as a blue static dot.</li>
+            </ul>
+            <p>We don't maintain a manual list — if you're in SpaceAPI or the wiki, you're in automatically.</p>
+
+            <h3>My space is wrong / misplaced 📍</h3>
+            <p>Coordinates and info come directly from the sources above — we don't store them independently.
+               Fix them at the source: update your SpaceAPI endpoint, or edit your wiki page.
+               Changes will appear on the next cache update (every few hours).</p>
+
+            <h3>Why no FabLabs? 🤔</h3>
+            <p>This is <strong>Hackerspaces</strong> World Domination, not FabLabs World Collaboration.
+               We're dead serious about our chaos here. 😏</p>
+            <p class="fine">We don't manually curate the list — if you're in SpaceAPI or the wiki, you're in.
+                <img src="assets/imin.gif" alt="Rick and Morty: I'm in!"></p>
+
+            <p><strong>Read more:</strong> <a href="https://iooner.io/hswd" target="_blank" rel="noopener noreferrer">full article on iooner.io →</a></p>
+            <p class="fine">Want to contribute, report an issue, or suggest a feature? <a href="https://github.com/iooner/Hackerspaces-World-Domination" target="_blank" rel="noopener noreferrer">Join me on GitHub →</a></p>
+            <p class="fine">Crafted with ❤️ in 🇧🇪 by <a href="https://iooner.io/" target="_blank" rel="noopener noreferrer">iooner</a> @ <a href="https://lghs.be/" target="_blank" rel="noopener noreferrer">Liège Hackerspace</a>.</p>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        'use strict';
+
+        const COLORS = {
+            open:    '#2EE6A8',
+            limited: '#FFD23F',
+            closed:  '#FF5566',
+            unknown: '#E9EEF5',
+            static:  '#4D9FFF'
+        };
+
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        let allData = null;       // FeatureCollection complète
+        let currentFilter = 'all';
+        let spinEnabled = !prefersReducedMotion;
+        let userInteracting = false;
+        let resumeTimer = null;
+
+        // ── Carte ───────────────────────────────────────────────
+        const map = new maplibregl.Map({
+            container: 'map',
+            center: [15, 45],
+            zoom: 1.6,
+            minZoom: 0.8,
+            maxZoom: 17,
+            attributionControl: false,
+            style: {
+                version: 8,
+                projection: { type: 'globe' },
+                glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+                sky: {
+                    'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.6, 5, 0.4, 7, 0]
+                },
+                light: { anchor: 'map', position: [1.5, 90, 80] },
+                sources: {},
+                layers: [
+                    { id: 'space', type: 'background', paint: { 'background-color': '#070B14' } }
+                ]
+            }
+        });
+
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+        map.addControl(new maplibregl.AttributionControl({
+            compact: true,
+            customAttribution: 'Data: SpaceAPI · hackerspaces.org · mapall.space'
+        }), 'bottom-right');
+
+        // ── Chargement parallèle : pays + spaces ────────────────
+        const countriesReady = fetch('assets/countries-50m-hswd.json')
+            .then(r => r.json())
+            .then(topo => topojson.feature(topo, topo.objects.countries));
+
+        const spacesReady = fetch('api.php?format=geojson')
+            .then(r => { if (!r.ok) throw new Error('api.php unavailable'); return r.json(); })
+            .catch(() =>
+                // Fallback fichier statique (preview locale sans PHP)
+                fetch('cache/test_geojson.json').then(r => {
+                    if (!r.ok) throw new Error('No data source available');
+                    return r.json();
+                })
+            );
+
+        map.on('load', async () => {
+            try {
+                const [countries, spaces] = await Promise.all([countriesReady, spacesReady]);
+                allData = spaces;
+
+                // Continents stylisés (aucune tuile, aucune clé API)
+                map.addSource('countries', { type: 'geojson', data: countries });
+                map.addLayer({
+                    id: 'land-fill', type: 'fill', source: 'countries',
+                    paint: { 'fill-color': '#1C2940' }
+                });
+                map.addLayer({
+                    id: 'land-line', type: 'line', source: 'countries',
+                    paint: { 'line-color': '#35496B', 'line-width': 0.6, 'line-opacity': 0.8 }
+                });
+
+                // Précision frontalière : swap silencieux vers le fond 10m réparé
+                // (antiméridien déroulé + cap polaire fermé, préprocessé offline)
+                fetch('assets/countries-10m-hswd.json')
+                    .then(r => r.json())
+                    .then(topo => {
+                        map.getSource('countries').setData(topojson.feature(topo, topo.objects.countries));
+                    })
+                    .catch(() => { /* le 50m reste en place */ });
+
+                // Spaces, clustering natif (vraies coordonnées, plus d'offset PHP)
+                map.addSource('spaces', {
+                    type: 'geojson',
+                    data: spaces,
+                    cluster: true,
+                    clusterRadius: 42,
+                    clusterMaxZoom: 11,
+                    clusterProperties: {
+                        open_n: ['+', ['case', ['==', ['get', 'state'], 'open'], 1, 0]]
+                    }
+                });
+
+                map.addLayer({
+                    id: 'clusters', type: 'circle', source: 'spaces',
+                    filter: ['has', 'point_count'],
+                    paint: {
+                        'circle-color': '#101B2E',
+                        'circle-stroke-width': 1.6,
+                        'circle-stroke-color': [
+                            'case', ['>', ['get', 'open_n'], 0], COLORS.open, '#4A608A'
+                        ],
+                        'circle-radius': [
+                            'step', ['get', 'point_count'],
+                            11, 5, 14, 15, 18, 50, 23
+                        ]
+                    }
+                });
+
+                map.addLayer({
+                    id: 'cluster-count', type: 'symbol', source: 'spaces',
+                    filter: ['has', 'point_count'],
+                    layout: {
+                        'text-field': ['get', 'point_count_abbreviated'],
+                        'text-font': ['Noto Sans Regular'],
+                        'text-size': 11
+                    },
+                    paint: { 'text-color': '#C7D3E4' }
+                });
+
+                map.addLayer({
+                    id: 'points', type: 'circle', source: 'spaces',
+                    filter: ['!', ['has', 'point_count']],
+                    paint: {
+                        'circle-color': [
+                            'match', ['get', 'state'],
+                            'open', COLORS.open,
+                            'limited', COLORS.limited,
+                            'closed', COLORS.closed,
+                            'unknown', COLORS.unknown,
+                            COLORS.static
+                        ],
+                        'circle-radius': [
+                            'interpolate', ['linear'], ['zoom'],
+                            1, ['case', ['==', ['get', 'state'], 'open'], 4.5, 3.5],
+                            8, ['case', ['==', ['get', 'state'], 'open'], 8, 6.5]
+                        ],
+                        'circle-stroke-width': 1.2,
+                        'circle-stroke-color': '#070B14'
+                    }
+                });
+
+                bindMapEvents();
+                updateStatusbar(spaces.metadata);
+                document.getElementById('boot').classList.add('done');
+                startSpin();
+            } catch (err) {
+                console.error(err);
+                const line = document.getElementById('boot-line');
+                line.innerHTML = '[<span class="err">FAIL</span>] ' + err.message;
+            }
+        });
+
+        // ── Interactions points & clusters ──────────────────────
+        const hoverPopup = new maplibregl.Popup({
+            closeButton: false, closeOnClick: false, offset: 10
+        });
+
+        function bindMapEvents() {
+            map.on('click', 'clusters', async (e) => {
+                const feature = e.features[0];
+                const clusterId = feature.properties.cluster_id;
+                const source = map.getSource('spaces');
+                const zoom = await source.getClusterExpansionZoom(clusterId);
+
+                if (zoom > 13) {
+                    // Spaces quasi superposés : liste cliquable plutôt qu'un zoom inutile
+                    const leaves = await source.getClusterLeaves(clusterId, 30, 0);
+                    showClusterList(feature.geometry.coordinates, leaves);
+                } else {
+                    map.easeTo({ center: feature.geometry.coordinates, zoom: zoom + 0.4, duration: 700 });
+                }
+            });
+
+            map.on('click', 'points', (e) => {
+                showSpaceCard(e.features[0].properties, e.features[0].geometry.coordinates);
+            });
+
+            for (const layer of ['clusters', 'points']) {
+                map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+                map.on('mouseleave', layer, () => {
+                    map.getCanvas().style.cursor = '';
+                    hoverPopup.remove();
+                });
+            }
+
+            map.on('mousemove', 'points', (e) => {
+                const f = e.features[0];
+                const p = f.properties;
+                let tip = '<strong>' + escapeHtml(p.name) + '</strong>';
+                if (p.message && p.message !== 'null') {
+                    tip += '<br><span class="tip-msg">' + escapeHtml(p.message) + '</span>';
+                }
+                hoverPopup
+                    .setLngLat(f.geometry.coordinates)
+                    .setHTML(tip)
+                    .addTo(map);
+            });
+
+            // Auto-rotation : pause à l'interaction, reprise après 7 s
+            map.on('mousedown', pauseSpin);
+            map.on('touchstart', pauseSpin);
+            map.on('wheel', pauseSpin);
+            map.on('moveend', () => { if (spinEnabled && !userInteracting) spinStep(); });
+        }
+
+        function showClusterList(lngLat, leaves) {
+            const items = leaves.map((leaf, i) =>
+                `<li><button data-leaf="${i}">` +
+                `<span class="dot" style="background:${COLORS[leaf.properties.state] || COLORS.static}"></span>` +
+                `${escapeHtml(leaf.properties.name)}</button></li>`
+            ).join('');
+
+            const popup = new maplibregl.Popup({ offset: 12, maxWidth: '280px' })
+                .setLngLat(lngLat)
+                .setHTML(`<ul class="cluster-list">${items}</ul>`)
+                .addTo(map);
+
+            popup.getElement().querySelectorAll('button[data-leaf]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const leaf = leaves[Number(btn.dataset.leaf)];
+                    showSpaceCard(leaf.properties, leaf.geometry.coordinates);
+                    popup.remove();
+                });
+            });
+        }
+
+        // ── Carte d'info ────────────────────────────────────────
+        function showSpaceCard(props, coords) {
+            const card = document.getElementById('space-card');
+            const state = props.state || 'static';
+            card.className = 'show state-' + state;
+
+            document.getElementById('card-name').innerHTML =
+                escapeHtml(props.name) + `<span class="badge ${state}">${state.toUpperCase()}</span>`;
+
+            const rows = [];
+            if (props.message && props.message !== 'null') {
+                rows.push(['MSG', escapeHtml(props.message)]);
+            }
+            if (props.address && props.address !== 'null') {
+                rows.push(['ADDR', escapeHtml(props.address)]);
+            } else if (props.city || props.country) {
+                rows.push(['LOC', escapeHtml([props.city, props.country].filter(Boolean).join(', '))]);
+            }
+            if (coords) {
+                const [lon, lat] = coords;
+                const osm = `https://www.openstreetmap.org/?mlat=${lat}&amp;mlon=${lon}#map=17/${lat}/${lon}`;
+                rows.push(['GEO', `<a href="${osm}" target="_blank" rel="noopener noreferrer">${lat.toFixed(4)}, ${lon.toFixed(4)}</a>`]);
+            }
+            if (state === 'unknown' && props.last_seen) {
+                const days = Math.floor((Date.now() - new Date(props.last_seen)) / 86400000);
+                rows.push(['SEEN', `${days} day${days === 1 ? '' : 's'} ago`]);
+            } else if (props.lastchange && props.lastchange !== 'null') {
+                rows.push(['SYNC', new Date(Number(props.lastchange) * 1000).toLocaleString('en-GB')]);
+            }
+            document.getElementById('card-fields').innerHTML =
+                rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+
+            const urlEl = document.getElementById('card-url');
+            if (props.url && props.url !== 'null') {
+                urlEl.href = props.url;
+                urlEl.style.display = 'inline-block';
+            } else {
+                urlEl.style.display = 'none';
+            }
+
+            const logoEl = document.getElementById('card-logo');
+            logoEl.style.display = 'none';
+            if (props.logo && /^https?:\/\//.test(props.logo)) {
+                logoEl.onload = () => { logoEl.style.display = 'block'; };
+                logoEl.onerror = () => { logoEl.style.display = 'none'; };
+                logoEl.src = props.logo;
+            }
+        }
+
+        document.querySelector('#space-card .close').addEventListener('click', () => {
+            document.getElementById('space-card').className = '';
+        });
+
+        // ── Filtres ─────────────────────────────────────────────
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.dataset.filter;
+                applyFilter();
+            });
+        });
+
+        function applyFilter() {
+            if (!allData) return;
+            const data = currentFilter === 'open'
+                ? { type: 'FeatureCollection', features: allData.features.filter(f => f.properties.state === 'open') }
+                : allData;
+            map.getSource('spaces').setData(data);
+            document.getElementById('n-total').textContent = data.features.length;
+        }
+
+        // ── Status bar ──────────────────────────────────────────
+        function updateStatusbar(meta) {
+            const stats = (meta && meta.stats) || {};
+            setText('n-open', stats.open);
+            setText('n-limited', stats.limited);
+            setText('n-closed', stats.closed);
+            setText('n-static', stats.static);
+            setText('n-unknown', stats.unknown);
+            setText('n-down', stats.down);
+            setText('n-total', allData.features.length);
+            document.getElementById('cache-info').textContent =
+                meta && meta.cache_age_text ? 'updated ' + meta.cache_age_text : '';
+        }
+
+        function setText(id, val) {
+            document.getElementById(id).textContent = (val === undefined || val === null) ? '0' : val;
+        }
+
+        // ── Auto-rotation ───────────────────────────────────────
+        function spinStep() {
+            if (!spinEnabled || userInteracting || map.getZoom() > 4) return;
+            const center = map.getCenter();
+            center.lng += 4; // degrés par étape
+            map.easeTo({ center, duration: 4000, easing: t => t });
+        }
+
+        function startSpin() { spinStep(); }
+
+        function pauseSpin() {
+            userInteracting = true;
+            clearTimeout(resumeTimer);
+            resumeTimer = setTimeout(() => {
+                userInteracting = false;
+                spinStep();
+            }, 7000);
+        }
+
+        // ── Modal Stats ──────────────────────────────────────────
+        const statsModal = document.getElementById('stats-modal');
+        let statsLoaded = false;
+
+        document.getElementById('stats-btn').addEventListener('click', async (e) => {
+            e.preventDefault();
+            statsModal.classList.add('show');
+            if (!statsLoaded) { await loadStats(); statsLoaded = true; }
+        });
+        statsModal.querySelector('.modal-close').addEventListener('click', () => statsModal.classList.remove('show'));
+        statsModal.addEventListener('click', (e) => { if (e.target === statsModal) statsModal.classList.remove('show'); });
+
+        async function loadStats() {
+            const body = document.getElementById('stats-body');
+            try {
+                const res = await fetch('api.php?format=history&limit=1008');
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                const runs = data.runs || [];
+                if (runs.length === 0) {
+                    body.innerHTML = '<p class="stats-loading">No history yet — run update_cache.php first.</p>';
+                    return;
+                }
+                body.innerHTML = renderStats(runs);
+                initSparkline(runs);
+            } catch(err) {
+                body.innerHTML = `<p class="stats-loading" style="color:var(--closed)">Failed to load stats: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        function renderStats(runs) {
+            const latest = runs[0];
+            const s = latest.stats || {};
+            const GH = 'https://github.com/iooner/Hackerspaces-World-Domination';
+
+            // Sparkline placeholder + tooltip
+            let html = `
+            <div class="sparkline-wrap" id="spark-wrap">
+                <svg id="sparkline" height="60" viewBox="0 0 700 60" preserveAspectRatio="none"></svg>
+                <div class="spark-tooltip" id="spark-tip"></div>
+                <div class="spark-label">
+                    <span>${formatTs(runs[runs.length-1].ts)}</span>
+                    <span>open+limited spaces — last ${runs.length} runs (${runs.length < 144 ? '&lt;1 day' : Math.round(runs.length/144) + ' days'})</span>
+                    <span>${formatTs(runs[0].ts)}</span>
+                </div>
+            </div>`;
+
+            // Derniers runs (20)
+            html += `<div class="stats-section">
+            <h3>Recent runs</h3>
+            <table class="runs-table">
+            <tr><th>TIME</th><th>DUR</th><th>OPEN</th><th>LIM</th><th>CLOSED</th><th>UNKN</th><th>DOWN</th><th>Σ</th></tr>`;
+            for (const r of runs.slice(0, 20)) {
+                const rs = r.stats || {};
+                html += `<tr>
+                    <td class="ts">${formatTs(r.ts)}</td>
+                    <td class="dur">${r.dur}s</td>
+                    <td><span class="stat-chip chip-open">${rs.open||0}</span></td>
+                    <td><span class="stat-chip chip-limited">${rs.limited||0}</span></td>
+                    <td><span class="stat-chip chip-closed">${rs.closed||0}</span></td>
+                    <td><span class="stat-chip chip-unknown">${rs.unknown||0}</span></td>
+                    <td><span class="stat-chip chip-down">${rs.down||0}</span></td>
+                    <td>${r.total||0}</td>
+                </tr>`;
+            }
+            html += '</table></div>';
+
+            // Unknown (API down < 30j)
+            if (latest.unknown && latest.unknown.length > 0) {
+                html += `<div class="stats-section"><h3>⚪ Unknown — API temporarily down (${latest.unknown.length})</h3><p style="font-size:11px;color:var(--dim);margin-bottom:6px">Spaces kept visible on the globe. API was reachable less than 30 days ago.</p>`;
+                for (const sp of latest.unknown) {
+                    html += `<span class="space-pill">${escapeHtml(sp.name)}<span class="days">${sp.days !== null ? sp.days+'d ago' : '?'}</span></span>`;
+                }
+                html += '</div>';
+            }
+
+            // Down (jamais placés)
+            if (latest.down && latest.down.length > 0) {
+                html += `<div class="stats-section"><h3>🟠 Down — API unreachable, not on map (${latest.down.length})</h3><p style="font-size:11px;color:var(--dim);margin-bottom:6px">No cached position available. Will appear once their API responds or mapall picks them up.</p>`;
+                for (const name of latest.down) {
+                    html += `<span class="space-pill">${escapeHtml(name)}</span>`;
+                }
+                html += '</div>';
+            }
+
+            // Expired
+            if (latest.expired && latest.expired.length > 0) {
+                html += `<div class="stats-section"><h3>🗑️ Expired — removed from map (${latest.expired.length})</h3><p style="font-size:11px;color:var(--dim);margin-bottom:6px">API has been unreachable for over 30 days.</p>`;
+                for (const sp of latest.expired) {
+                    html += `<span class="space-pill">${escapeHtml(sp.name)}<span class="days">${sp.days !== null ? sp.days+'d' : '?'}</span></span>`;
+                }
+                html += '</div>';
+            }
+
+            // Banned
+            if (latest.banned && latest.banned.length > 0) {
+                html += `<div class="stats-section"><h3>🚫 Banned spaces (${latest.banned.length})</h3>
+                <p style="font-size:11px;color:var(--dim);margin-bottom:8px">These spaces have been manually excluded. Think the ban should be lifted?
+                <a class="gh-link" href="${escapeHtml(GH)}/issues" target="_blank" rel="noopener noreferrer">Open an issue or PR on GitHub →</a></p>`;
+                for (const sp of latest.banned) {
+                    html += `<div class="banned-item">
+                        <strong>${escapeHtml(sp.name)}</strong>
+                        <span class="stat-chip chip-banned" style="font-size:9px;vertical-align:2px">${escapeHtml(sp.source)}</span>
+                        <span class="reason">${escapeHtml(sp.reason)}</span>
+                        <a class="gh-link" href="${escapeHtml(GH)}/issues/new?title=Unban+request:+${encodeURIComponent(sp.name)}&body=Space:+${encodeURIComponent(sp.name)}%0AReason+for+unban:" target="_blank" rel="noopener noreferrer">Request unban →</a>
+                    </div>`;
+                }
+                html += '</div>';
+            }
+
+            return html;
+        }
+
+        function initSparkline(runs) {
+            const svg = document.getElementById('sparkline');
+            if (!svg) return;
+            const tip = document.getElementById('spark-tip');
+            const W = 700, H = 60, PAD = 4;
+
+            // Agréger par heure (moyenne des open+limited)
+            const byHour = new Map();
+            for (const r of runs) {
+                const h = r.ts.slice(0, 13); // "2026-06-13T15"
+                const v = (r.stats?.open || 0) + (r.stats?.limited || 0);
+                if (!byHour.has(h)) byHour.set(h, []);
+                byHour.get(h).push({ v, r });
+            }
+            const hours = [...byHour.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+            if (hours.length < 2) return;
+
+            const vals = hours.map(([, arr]) => Math.round(arr.reduce((s, x) => s + x.v, 0) / arr.length));
+            const minV = Math.min(...vals), maxV = Math.max(...vals);
+            const range = maxV - minV || 1;
+
+            const xOf = i => PAD + (i / (hours.length - 1)) * (W - PAD * 2);
+            const yOf = v => H - PAD - ((v - minV) / range) * (H - PAD * 2);
+
+            // Aire de remplissage
+            let area = `M${xOf(0)},${H} L${xOf(0)},${yOf(vals[0])}`;
+            for (let i = 1; i < vals.length; i++) area += ` L${xOf(i)},${yOf(vals[i])}`;
+            area += ` L${xOf(vals.length-1)},${H} Z`;
+
+            // Ligne
+            let line = `M${xOf(0)},${yOf(vals[0])}`;
+            for (let i = 1; i < vals.length; i++) line += ` L${xOf(i)},${yOf(vals[i])}`;
+
+            svg.innerHTML = `
+                <defs>
+                    <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#2EE6A8" stop-opacity=".25"/>
+                        <stop offset="100%" stop-color="#2EE6A8" stop-opacity="0"/>
+                    </linearGradient>
+                </defs>
+                <path d="${area}" fill="url(#sg)"/>
+                <path d="${line}" fill="none" stroke="#2EE6A8" stroke-width="1.5" stroke-linejoin="round"/>
+            `;
+
+            // Points invisibles pour le hover
+            const wrap = document.getElementById('spark-wrap');
+            const rect = { w: W, h: H };
+
+            svg.addEventListener('mousemove', (e) => {
+                const br = svg.getBoundingClientRect();
+                const px = (e.clientX - br.left) / br.width * W;
+                // Trouver le point le plus proche
+                let best = 0, bestD = Infinity;
+                for (let i = 0; i < hours.length; i++) {
+                    const d = Math.abs(xOf(i) - px);
+                    if (d < bestD) { bestD = d; best = i; }
+                }
+                const [hKey, arr] = hours[best];
+                const avg = vals[best];
+                const sample = arr[0].r;
+                const rs = sample.stats || {};
+                tip.style.display = 'block';
+                tip.style.left = Math.min(e.clientX - br.left + 10, br.width - 160) + 'px';
+                tip.style.top = (yOf(avg) * br.height / H - 40) + 'px';
+                tip.innerHTML = `<strong>${hKey.replace('T',' ')}h</strong><br>` +
+                    `🟢 ${rs.open||0} &nbsp;🟡 ${rs.limited||0} &nbsp;🔴 ${rs.closed||0}<br>` +
+                    `⚪ ${rs.unknown||0} &nbsp;🟠 ${rs.down||0} &nbsp;Σ ${sample.total||0}<br>` +
+                    `⏱ ${sample.dur}s`;
+            });
+            svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+        }
+
+        function formatTs(ts) {
+            if (!ts) return '—';
+            const d = new Date(ts);
+            return d.toLocaleString('en-GB', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        }
+
+        // ── Modal About ─────────────────────────────────────────
+        const modal = document.getElementById('about-modal');
+        document.getElementById('about-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            modal.classList.add('show');
+        });
+        modal.querySelector('.modal-close').addEventListener('click', () => modal.classList.remove('show'));
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('show'); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                modal.classList.remove('show');
+                document.getElementById('space-card').className = '';
+            }
+        });
+
+        // ── Utilitaires ─────────────────────────────────────────
+        function escapeHtml(str) {
+            return String(str ?? '').replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+    })();
+    </script>
+</body>
+</html>

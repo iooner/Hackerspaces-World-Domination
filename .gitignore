@@ -1,1 +1,11 @@
+# Generated at runtime — never commit
+cache/hackerspaces_cache.json
+cache/run_history.json
+
+# Dev snapshot — not needed in production
+cache/test_geojson.json
+
+# OS
 .DS_Store
+**/.DS_Store
+__MACOSX/
