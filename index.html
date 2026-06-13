@@ -382,7 +382,7 @@
             margin-top: 3px;
         }
 
-        .runs-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 8px; }
+        .runs-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
         .runs-table th { color: var(--dim); font-weight: 600; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--panel-border); letter-spacing: .05em; }
         .runs-table td { padding: 4px 8px; border-bottom: 1px solid rgba(73,97,138,.12); vertical-align: top; }
         .runs-table tr:last-child td { border-bottom: none; }
@@ -415,16 +415,16 @@
             border: 1px solid var(--panel-border);
             border-radius: 4px;
             padding: 3px 8px;
-            font-size: 11px;
+            font-size: 12px;
             margin: 2px 3px 2px 0;
             color: var(--text);
         }
         .space-pill .days { color: var(--dim); font-size: 10px; margin-left: 4px; }
-        .banned-item { margin: 6px 0; font-size: 12px; }
-        .banned-item .reason { color: var(--dim); font-size: 11px; display: block; margin-top: 2px; }
-        .banned-item .gh-link { font-size: 11px; color: var(--static); text-decoration: none; }
+        .banned-item { margin: 6px 0; font-size: 12.5px; line-height: 1.65; }
+        .banned-item .reason { color: var(--dim); font-size: 11px; display: block; margin-top: 2px; font-style: italic; }
+        .banned-item .gh-link { font-size: 11px; color: var(--static); text-decoration: none; font-style: normal; }
         .banned-item .gh-link:hover { text-decoration: underline; }
-        .stats-loading { color: var(--dim); font-size: 12px; padding: 20px 0; text-align: center; }
+        .stats-loading { color: var(--dim); font-size: 12.5px; padding: 20px 0; text-align: center; }
 
         .modal-close {
             position: absolute;
@@ -976,7 +976,7 @@
 
             // Unknown (API down < 30j)
             if (latest.unknown && latest.unknown.length > 0) {
-                html += `<div class="stats-section"><h3>⚪ Unknown — API temporarily down (${latest.unknown.length})</h3><p style="font-size:11px;color:var(--dim);margin-bottom:6px">Spaces kept visible on the globe. API was reachable less than 30 days ago.</p>`;
+                html += `<div class="stats-section"><h3>⚪ Unknown — API temporarily down (${latest.unknown.length})</h3><p class="fine">Spaces kept visible on the globe. API was reachable less than 30 days ago.</p>`;
                 for (const sp of latest.unknown) {
                     html += `<span class="space-pill">${escapeHtml(sp.name)}<span class="days">${sp.days !== null ? sp.days+'d ago' : '?'}</span></span>`;
                 }
@@ -985,7 +985,7 @@
 
             // Down (jamais placés)
             if (latest.down && latest.down.length > 0) {
-                html += `<div class="stats-section"><h3>🟠 Down — API unreachable, not on map (${latest.down.length})</h3><p style="font-size:11px;color:var(--dim);margin-bottom:6px">No cached position available. Will appear once their API responds or mapall picks them up.</p>`;
+                html += `<div class="stats-section"><h3>🟠 Down — API unreachable, not on map (${latest.down.length})</h3><p class="fine">No cached position available. Will appear once their API responds or mapall picks them up.</p>`;
                 for (const name of latest.down) {
                     html += `<span class="space-pill">${escapeHtml(name)}</span>`;
                 }
@@ -994,7 +994,7 @@
 
             // Expired
             if (latest.expired && latest.expired.length > 0) {
-                html += `<div class="stats-section"><h3>🗑️ Expired — removed from map (${latest.expired.length})</h3><p style="font-size:11px;color:var(--dim);margin-bottom:6px">API has been unreachable for over 30 days.</p>`;
+                html += `<div class="stats-section"><h3>🗑️ Expired — removed from map (${latest.expired.length})</h3><p class="fine">API has been unreachable for over 30 days.</p>`;
                 for (const sp of latest.expired) {
                     html += `<span class="space-pill">${escapeHtml(sp.name)}<span class="days">${sp.days !== null ? sp.days+'d' : '?'}</span></span>`;
                 }
@@ -1004,7 +1004,7 @@
             // Banned
             if (latest.banned && latest.banned.length > 0) {
                 html += `<div class="stats-section"><h3>🚫 Banned spaces (${latest.banned.length})</h3>
-                <p style="font-size:11px;color:var(--dim);margin-bottom:8px">These spaces have been manually excluded. Think the ban should be lifted?
+                <p class="fine">These spaces have been manually excluded. Think the ban should be lifted?
                 <a class="gh-link" href="${escapeHtml(GH)}/issues" target="_blank" rel="noopener noreferrer">Open an issue or PR on GitHub →</a></p>`;
                 for (const sp of latest.banned) {
                     html += `<div class="banned-item">
