@@ -155,6 +155,11 @@
 
         .seg.spacer { flex: 1; border-right: none; padding: 0; }
 
+        .seg-filter { cursor: pointer; transition: background .15s; }
+        .seg-filter:hover { background: rgba(255,255,255,.04); }
+        .seg-filter.active { background: rgba(255,255,255,.06); }
+        .seg-filter.active .lbl { color: var(--text); }
+
         .seg.meta { color: var(--dim); border-right: none; }
         .seg.meta a { color: var(--static); text-decoration: none; }
         .seg.meta a:hover, .seg.meta a:focus-visible { text-decoration: underline; }
@@ -485,11 +490,11 @@
     </header>
 
     <footer id="statusbar">
-        <div class="seg" title="Open (SpaceAPI live)"><span class="dot open"></span><span class="n" id="n-open">–</span><span class="lbl">open</span></div>
-        <div class="seg" title="Open to members only (SpaceAPI live)"><span class="dot limited"></span><span class="n" id="n-limited">–</span><span class="lbl">limited</span></div>
-        <div class="seg" title="Closed (SpaceAPI live)"><span class="dot closed"></span><span class="n" id="n-closed">–</span><span class="lbl">closed</span></div>
-        <div class="seg" title="Static (wiki + mapall)"><span class="dot static"></span><span class="n" id="n-static">–</span><span class="lbl">static</span></div>
-        <div class="seg" title="Unknown (API down < 30d)"><span class="dot unknown"></span><span class="n" id="n-unknown">–</span><span class="lbl">unknown</span></div>
+        <div class="seg seg-filter" data-filter="open" title="Click to filter · Open (SpaceAPI live)"><span class="dot open"></span><span class="n" id="n-open">–</span><span class="lbl">open</span></div>
+        <div class="seg seg-filter" data-filter="limited" title="Click to filter · Open to members only (SpaceAPI live)"><span class="dot limited"></span><span class="n" id="n-limited">–</span><span class="lbl">limited</span></div>
+        <div class="seg seg-filter" data-filter="closed" title="Click to filter · Closed (SpaceAPI live)"><span class="dot closed"></span><span class="n" id="n-closed">–</span><span class="lbl">closed</span></div>
+        <div class="seg seg-filter" data-filter="static" title="Click to filter · Static (wiki + mapall)"><span class="dot static"></span><span class="n" id="n-static">–</span><span class="lbl">static</span></div>
+        <div class="seg seg-filter" data-filter="unknown" title="Click to filter · Unknown (API down < 30d)"><span class="dot unknown"></span><span class="n" id="n-unknown">–</span><span class="lbl">unknown</span></div>
         <div class="seg" title="Lost — API down + geocoding failed, not displayed"><span class="dot down"></span><span class="n" id="n-down">–</span><span class="lbl">down</span></div>
         <div class="seg" title="Total displayed"><span class="lbl">Σ</span><span class="n" id="n-total">–</span></div>
         <div class="seg spacer"></div>
@@ -852,10 +857,25 @@
         });
 
         // ── Filtres ─────────────────────────────────────────────
+        // Segments de la barre de statut → filtre
+        document.querySelectorAll('.seg-filter').forEach(seg => {
+            seg.addEventListener('click', () => {
+                const f = seg.dataset.filter;
+                // Toggle : cliquer sur le filtre actif revient à ALL
+                currentFilter = (currentFilter === f) ? 'all' : f;
+                // Sync boutons prompt
+                document.querySelectorAll('.filter-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.filter === 'all' && currentFilter === 'all');
+                });
+                applyFilter();
+            });
+        });
+
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
+                document.querySelectorAll('.seg-filter').forEach(s => s.classList.remove('active'));
                 currentFilter = btn.dataset.filter;
                 applyFilter();
             });
@@ -863,11 +883,30 @@
 
         function applyFilter() {
             if (!allData) return;
-            const data = currentFilter === 'open'
-                ? { type: 'FeatureCollection', features: allData.features.filter(f => f.properties.state === 'open') }
-                : allData;
+            const data = currentFilter === 'all'
+                ? allData
+                : { type: 'FeatureCollection', features: allData.features.filter(f => f.properties.state === currentFilter) };
             map.getSource('spaces').setData(data);
             document.getElementById('n-total').textContent = data.features.length;
+
+            // Sync boutons prompt
+            document.querySelectorAll('.filter-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.filter === currentFilter || (currentFilter !== 'open' && b.dataset.filter === 'all'));
+            });
+            // Sync segments statusbar
+            document.querySelectorAll('.seg-filter').forEach(s => {
+                s.classList.toggle('active', s.dataset.filter === currentFilter);
+            });
+            // Titre onglet
+            const stats = allData.metadata?.stats || {};
+            if (currentFilter === 'all') {
+                updateTitle(stats.open || 0, stats.limited || 0);
+            } else {
+                updateTitle(
+                    currentFilter === 'open' ? (stats.open || 0) : 0,
+                    currentFilter === 'limited' ? (stats.limited || 0) : 0
+                );
+            }
         }
 
         // ── Status bar ──────────────────────────────────────────
@@ -882,6 +921,12 @@
             setText('n-total', allData.features.length);
             document.getElementById('cache-info').textContent =
                 meta && meta.cache_age_text ? 'updated ' + meta.cache_age_text : '';
+            updateTitle(stats.open || 0, stats.limited || 0);
+        }
+
+        function updateTitle(open, limited) {
+            const total = open + limited;
+            document.title = total > 0 ? `(${total}🟢) HSWD` : 'HSWD';
         }
 
         function setText(id, val) {
