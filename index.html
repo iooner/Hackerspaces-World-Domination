@@ -175,6 +175,33 @@
             outline-offset: 2px;
         }
 
+        /* ── Pulse marker (sélection sur le globe) ─────────────── */
+        .pulse-marker {
+            width: 14px;
+            height: 14px;
+            pointer-events: none; /* ne bloque jamais le clic sur le point réel */
+        }
+        .pulse-ring {
+            position: absolute;
+            inset: 0;
+            border-width: 2px;
+            border-style: solid;
+            border-radius: 50%;
+            opacity: 0;
+            animation: pulse-grow 1.8s linear infinite;
+            will-change: transform, opacity;
+        }
+        .pulse-ring.delay { animation-delay: .9s; }
+
+        @keyframes pulse-grow {
+            0%   { transform: scale(0.5); opacity: 0.8; }
+            100% { transform: scale(3); opacity: 0; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .pulse-ring { animation: none; transform: scale(1.6); opacity: 0.5; }
+        }
+
         .filter-btn.active {
             color: var(--open);
             border-color: var(--open);
@@ -792,7 +819,10 @@
                 bindMapEvents();
                 updateStatusbar(spaces.metadata);
                 document.getElementById('boot').classList.add('done');
-                startSpin();
+
+                // Deep-link : #space=Nom+Du+Space → vol direct + carte d'info
+                const deepLinked = openFromHash();
+                if (!deepLinked) startSpin();
             } catch (err) {
                 console.error(err);
                 const line = document.getElementById('boot-line');
@@ -822,7 +852,9 @@
             });
 
             map.on('click', 'points', (e) => {
+                stopPulse();
                 showSpaceCard(e.features[0].properties, e.features[0].geometry.coordinates);
+                setShareHash(e.features[0].properties.name);
             });
 
             for (const layer of ['clusters', 'points']) {
@@ -868,10 +900,36 @@
             popup.getElement().querySelectorAll('button[data-leaf]').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const leaf = leaves[Number(btn.dataset.leaf)];
+                    stopPulse();
                     showSpaceCard(leaf.properties, leaf.geometry.coordinates);
+                    setShareHash(leaf.properties.name);
                     popup.remove();
                 });
             });
+        }
+
+        // ── Pulse animé sur le space sélectionné ────────────────
+        // Marker HTML + CSS plutôt que repaint WebGL par frame : le navigateur
+        // anime ça sur son compositeur, donc c'est fluide même sur machine modeste.
+        let pulseMarker = null;
+
+        function startPulse(coords, color) {
+            stopPulse();
+
+            const el = document.createElement('div');
+            el.className = 'pulse-marker';
+            el.innerHTML = `
+                <span class="pulse-ring" style="border-color:${color}"></span>
+                ${prefersReducedMotion ? '' : `<span class="pulse-ring delay" style="border-color:${color}"></span>`}
+            `;
+
+            pulseMarker = new maplibregl.Marker({ element: el, anchor: 'center' })
+                .setLngLat(coords)
+                .addTo(map);
+        }
+
+        function stopPulse() {
+            if (pulseMarker) { pulseMarker.remove(); pulseMarker = null; }
         }
 
         // ── Carte d'info ────────────────────────────────────────
@@ -879,6 +937,8 @@
             const card = document.getElementById('space-card');
             const state = props.state || 'static';
             card.className = 'show state-' + state;
+
+            if (coords) startPulse(coords, COLORS[state] || COLORS.static);
 
             document.getElementById('card-name').innerHTML =
                 escapeHtml(props.name) + `<span class="badge ${state}">${state.toUpperCase()}</span>`;
@@ -925,6 +985,8 @@
 
         document.querySelector('#space-card .close').addEventListener('click', () => {
             document.getElementById('space-card').className = '';
+            clearShareHash();
+            stopPulse();
         });
 
         // ── Filtres ─────────────────────────────────────────────
@@ -1215,7 +1277,46 @@
             return d.toLocaleString('en-GB', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
         }
 
-        // ── Recherche avec fly-to ────────────────────────────────
+        // ── Shareable URL (#space=Name) ──────────────────────────
+        function findSpaceByName(name) {
+            if (!allData) return null;
+            const target = normalizeSearch(name);
+            return allData.features.find(f => normalizeSearch(f.properties.name) === target) || null;
+        }
+
+        function openFromHash() {
+            const match = location.hash.match(/^#space=(.+)$/);
+            if (!match) return false;
+
+            const name = decodeURIComponent(match[1].replace(/\+/g, ' '));
+            const feature = findSpaceByName(name);
+            if (!feature) {
+                console.warn(`Deep-link: space "${name}" not found`);
+                return false;
+            }
+
+            // Attendre que le rendu soit stabilisé (couches points/clusters peintes)
+            // plutôt qu'un délai arbitraire — sinon le flyTo démarre avant que la
+            // source 'spaces' soit visible et l'animation paraît vide/trop rapide
+            map.once('idle', () => {
+                stopPulse();
+                const coords = feature.geometry.coordinates;
+                map.flyTo({ center: coords, zoom: 14, duration: 2000 });
+                map.once('moveend', () => showSpaceCard(feature.properties, coords));
+            });
+            return true;
+        }
+
+        function setShareHash(name) {
+            const newHash = '#space=' + encodeURIComponent(name).replace(/%20/g, '+');
+            history.replaceState(null, '', newHash);
+        }
+
+        function clearShareHash() {
+            history.replaceState(null, '', location.pathname + location.search);
+        }
+
+
         const searchToggle = document.getElementById('search-toggle');
         const searchBox = document.getElementById('search-box');
         const searchInput = document.getElementById('search-input');
@@ -1318,10 +1419,13 @@
 
             // Empêche l'auto-rotation de lancer un easeTo concurrent pendant le flyTo
             pauseSpin();
+            // Coupe net le pulse précédent : pas de vieux marker visible pendant le vol
+            stopPulse();
 
             const coords = feature.geometry.coordinates;
             map.flyTo({ center: coords, zoom: 14, duration: 2000 });
             map.once('moveend', () => showSpaceCard(feature.properties, coords));
+            setShareHash(feature.properties.name);
         }
 
         function closeResults() {
@@ -1353,6 +1457,8 @@
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal').forEach(m => m.classList.remove('show'));
                 document.getElementById('space-card').className = '';
+                clearShareHash();
+                stopPulse();
                 if (searchBox.classList.contains('show')) {
                     searchBox.classList.remove('show');
                     searchToggle.classList.remove('active');
