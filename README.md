@@ -272,7 +272,7 @@ Ideas and planned upgrades — contributions welcome!
 
 ### Frontend
 
-- [ ] **Search with fly-to** — search field in the terminal prompt block, autocomplete over all space names, globe flies to the result on select
+- [x] **Search with fly-to** — search field in the terminal prompt block, autocomplete over all space names, globe flies to the result on select
 - [x] **Clickable status bar** — clicking a segment (`open`, `limited`, `closed`…) in the footer filters the globe directly, as a natural alternative to the [ALL] / [OPEN] buttons
 - [ ] **Shareable URL** — `#space=Liege+Hackerspace` opens the globe centered on a space with the info card expanded; useful for QR codes on hackerspace doors
 - [ ] **Kiosk mode** — `?kiosk` query param: UI hidden, continuous rotation, fullscreen; designed for wall-mounted screens at hackerspaces

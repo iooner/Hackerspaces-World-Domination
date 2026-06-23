@@ -105,6 +105,71 @@
 
         .filter-btn:hover { color: var(--text); border-color: var(--dim); }
 
+        .search-toggle { margin-left: 2px; }
+        .search-toggle.active { color: var(--open); border-color: var(--open); }
+
+        #prompt .filters { position: relative; }
+
+        .search-box {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            width: 260px;
+        }
+        .search-box.show { display: block; }
+
+        #search-input {
+            width: 100%;
+            background: rgba(255,255,255,.04);
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 12px;
+            padding: 6px 10px;
+            outline: none;
+            box-sizing: border-box;
+        }
+        #search-input:focus { border-color: var(--open); }
+
+        .search-results {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0; right: 0;
+            max-height: 240px;
+            overflow-y: auto;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 5px;
+            list-style: none;
+            z-index: 20;
+            box-shadow: 0 8px 24px rgba(0,0,0,.4);
+        }
+        .search-results.show { display: block; }
+        .search-results li { padding: 0; }
+        .search-results button {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: none;
+            border: none;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 12px;
+            text-align: left;
+            padding: 7px 10px;
+            cursor: pointer;
+        }
+        .search-results button:hover,
+        .search-results button.kbd-active { background: rgba(255,255,255,.06); }
+        .search-results .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+        .search-results .city { color: var(--dim); font-size: 10.5px; margin-left: auto; white-space: nowrap; }
+        .search-no-results { padding: 10px; color: var(--dim); font-size: 11.5px; text-align: center; }
+
         .filter-btn:focus-visible {
             outline: 2px solid var(--static);
             outline-offset: 2px;
@@ -487,6 +552,11 @@
         <div class="filters" role="group" aria-label="Filter spaces">
             <button class="filter-btn active" data-filter="all">[ALL]</button>
             <button class="filter-btn" data-filter="open">[OPEN]</button>
+            <button class="filter-btn search-toggle" id="search-toggle" aria-label="Search a space" aria-expanded="false">🔍</button>
+        </div>
+        <div class="search-box" id="search-box">
+            <input type="text" id="search-input" placeholder="search space or city…" autocomplete="off" aria-label="Search a space by name or city">
+            <ul class="search-results" id="search-results" role="listbox"></ul>
         </div>
     </header>
 
@@ -865,16 +935,16 @@
                 // Toggle : cliquer sur le filtre actif revient à ALL
                 currentFilter = (currentFilter === f) ? 'all' : f;
                 // Sync boutons prompt
-                document.querySelectorAll('.filter-btn').forEach(b => {
+                document.querySelectorAll('.filter-btn[data-filter]').forEach(b => {
                     b.classList.toggle('active', b.dataset.filter === 'all' && currentFilter === 'all');
                 });
                 applyFilter();
             });
         });
 
-        document.querySelectorAll('.filter-btn').forEach(btn => {
+        document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 document.querySelectorAll('.seg-filter').forEach(s => s.classList.remove('active'));
                 currentFilter = btn.dataset.filter;
@@ -891,7 +961,7 @@
             document.getElementById('n-total').textContent = data.features.length;
 
             // Sync boutons prompt
-            document.querySelectorAll('.filter-btn').forEach(b => {
+            document.querySelectorAll('.filter-btn[data-filter]').forEach(b => {
                 b.classList.toggle('active', b.dataset.filter === currentFilter || (currentFilter !== 'open' && b.dataset.filter === 'all'));
             });
             // Sync segments statusbar
@@ -937,6 +1007,7 @@
         // ── Auto-rotation ───────────────────────────────────────
         function spinStep() {
             if (!spinEnabled || userInteracting || map.getZoom() > 4) return;
+            if (map.isEasing() || map.isMoving()) return; // évite le conflit d'animation MapLibre
             const center = map.getCenter();
             center.lng += 4; // degrés par étape
             map.easeTo({ center, duration: 4000, easing: t => t });
@@ -1144,6 +1215,131 @@
             return d.toLocaleString('en-GB', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
         }
 
+        // ── Recherche avec fly-to ────────────────────────────────
+        const searchToggle = document.getElementById('search-toggle');
+        const searchBox = document.getElementById('search-box');
+        const searchInput = document.getElementById('search-input');
+        const searchResults = document.getElementById('search-results');
+        let kbdIndex = -1;
+
+        searchToggle.addEventListener('click', () => {
+            const opening = !searchBox.classList.contains('show');
+            searchBox.classList.toggle('show', opening);
+            searchToggle.classList.toggle('active', opening);
+            searchToggle.setAttribute('aria-expanded', String(opening));
+            if (opening) {
+                searchInput.value = '';
+                searchInput.focus();
+                renderResults([]);
+            } else {
+                closeResults();
+            }
+            // Le panneau change la hauteur du prompt mais pas la taille du canvas WebGL —
+            // sans resize() explicite, MapLibre garde un viewport désynchronisé.
+            requestAnimationFrame(() => map.resize());
+        });
+
+        function normalizeSearch(str) {
+            return (str || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, ''); // retire les diacritiques (é→e, ü→u, etc.)
+        }
+
+        searchInput.addEventListener('input', () => {
+            const q = normalizeSearch(searchInput.value.trim());
+            kbdIndex = -1;
+            if (q.length === 0 || !allData) { renderResults([]); return; }
+
+            const matches = allData.features.filter(f => {
+                const p = f.properties;
+                return normalizeSearch(p.name).includes(q) ||
+                       normalizeSearch(p.city).includes(q);
+            }).slice(0, 8);
+
+            renderResults(matches, q);
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            const items = searchResults.querySelectorAll('button[data-idx]');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                kbdIndex = Math.min(kbdIndex + 1, items.length - 1);
+                highlightKbd(items);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                kbdIndex = Math.max(kbdIndex - 1, 0);
+                highlightKbd(items);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const target = items[kbdIndex >= 0 ? kbdIndex : 0];
+                if (target) target.click();
+            } else if (e.key === 'Escape') {
+                closeResults();
+                searchToggle.click();
+            }
+        });
+
+        function highlightKbd(items) {
+            items.forEach((it, i) => it.classList.toggle('kbd-active', i === kbdIndex));
+            if (items[kbdIndex]) items[kbdIndex].scrollIntoView({ block: 'nearest' });
+        }
+
+        function renderResults(matches) {
+            if (matches.length === 0) {
+                searchResults.innerHTML = searchInput.value.trim()
+                    ? '<li class="search-no-results">No space found</li>'
+                    : '';
+                searchResults.classList.toggle('show', searchInput.value.trim().length > 0);
+                return;
+            }
+            searchResults.innerHTML = matches.map((f, i) => {
+                const p = f.properties;
+                const color = COLORS[p.state] || COLORS.static;
+                const cityLabel = p.city ? escapeHtml(p.city) : '';
+                return `<li><button data-idx="${i}" type="button">
+                    <span class="dot" style="background:${color}"></span>
+                    <span>${escapeHtml(p.name)}</span>
+                    ${cityLabel ? `<span class="city">${cityLabel}</span>` : ''}
+                </button></li>`;
+            }).join('');
+            searchResults.classList.add('show');
+
+            searchResults.querySelectorAll('button[data-idx]').forEach((btn, i) => {
+                btn.addEventListener('click', () => selectSearchResult(matches[i]));
+            });
+        }
+
+        function selectSearchResult(feature) {
+            closeResults();
+            searchBox.classList.remove('show');
+            searchToggle.classList.remove('active');
+            searchToggle.setAttribute('aria-expanded', 'false');
+
+            // Empêche l'auto-rotation de lancer un easeTo concurrent pendant le flyTo
+            pauseSpin();
+
+            const coords = feature.geometry.coordinates;
+            map.flyTo({ center: coords, zoom: 14, duration: 2000 });
+            map.once('moveend', () => showSpaceCard(feature.properties, coords));
+        }
+
+        function closeResults() {
+            searchResults.classList.remove('show');
+            searchResults.innerHTML = '';
+            kbdIndex = -1;
+        }
+
+        // Fermer la recherche si on clique en dehors
+        document.addEventListener('click', (e) => {
+            if (!searchBox.contains(e.target) && e.target !== searchToggle && searchBox.classList.contains('show')) {
+                searchBox.classList.remove('show');
+                searchToggle.classList.remove('active');
+                searchToggle.setAttribute('aria-expanded', 'false');
+                closeResults();
+            }
+        });
+
         // ── Modal About ─────────────────────────────────────────
         const modal = document.getElementById('about-modal');
         document.getElementById('about-btn').addEventListener('click', (e) => {
@@ -1157,6 +1353,12 @@
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal').forEach(m => m.classList.remove('show'));
                 document.getElementById('space-card').className = '';
+                if (searchBox.classList.contains('show')) {
+                    searchBox.classList.remove('show');
+                    searchToggle.classList.remove('active');
+                    searchToggle.setAttribute('aria-expanded', 'false');
+                    closeResults();
+                }
             }
         });
 
