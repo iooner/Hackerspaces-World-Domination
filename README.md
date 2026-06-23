@@ -282,7 +282,7 @@ Ideas and planned upgrades — contributions welcome!
 
 - [ ] **Linked spaces** — display `linked_spaces` from SpaceAPI (e.g. [LgHS](https://spaceapi.lghs.be/)) in the info card, with live status for each linked space and reverse links
 - [ ] **Nominatim investigation** — the Nominatim geocoding fallback currently fails 100% of the time server-side (~16 spaces lost as a result); needs a `curl` test in SSH to determine if the hosting provider blocks outbound requests to OSM
-- [ ] **Dead code cleanup** — remove `test_geojson.json` from the repo (already in `.gitignore`, needs a `git rm --cached`)
+- [x] **Dead code cleanup** — remove `test_geojson.json` from the repo (already in `.gitignore`, needs a `git rm --cached`)
 
 ### Stats modal
 
