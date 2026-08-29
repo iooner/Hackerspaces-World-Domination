@@ -125,30 +125,42 @@ function geocodeHackerspace($name) {
     // Nettoyer le nom pour la recherche
     $searchQuery = $name . ' hackerspace';
     $searchQuery = urlencode($searchQuery);
-    
+
     // Nominatim API (gratuit, rate limit: 1 req/sec)
     $url = "https://nominatim.openstreetmap.org/search?q={$searchQuery}&format=json&limit=1";
-    
+
     // Headers requis par Nominatim
     $context = stream_context_create([
         'http' => [
             'header' => "User-Agent: HSWD-Globe/1.0\r\n",
-            'timeout' => 5
+            'timeout' => 5,
+            'ignore_errors' => true // pour pouvoir lire le corps même sur un statut non-200
         ]
     ]);
-    
-    $response = @file_get_contents($url, false, $context);
-    
+
+    $geocodeError = null;
+    set_error_handler(function ($no, $str) use (&$geocodeError) { $geocodeError = $str; });
+    $response = file_get_contents($url, false, $context);
+    restore_error_handler();
+
     if ($response === false) {
+        // Distingue "requête jamais partie/timeout" de "0 résultat trouvé" —
+        // diagnostic temporaire pour le roadmap "Nominatim investigation"
+        echo "    ↳ debug geocoding: échec réseau — " . ($geocodeError ?: 'raison inconnue') . "\n";
         return null;
     }
-    
+
+    // http_get_last_response_headers() (PHP 8.3+) remplace $http_response_header,
+    // déprécié en 8.5 — les deux environnements (prod 8.3, dev 8.5) le supportent.
+    $headers = function_exists('http_get_last_response_headers') ? http_get_last_response_headers() : ($http_response_header ?? []);
+    $status = $headers[0] ?? '(pas de statut HTTP)';
     $data = json_decode($response, true);
-    
+
     if (empty($data) || !isset($data[0]['lat']) || !isset($data[0]['lon'])) {
+        echo "    ↳ debug geocoding: {$status} — 0 résultat pour \"" . urldecode($searchQuery) . "\" (réponse: " . substr($response, 0, 120) . ")\n";
         return null;
     }
-    
+
     return [
         'lat' => floatval($data[0]['lat']),
         'lon' => floatval($data[0]['lon']),
