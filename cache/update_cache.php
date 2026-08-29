@@ -302,7 +302,7 @@ foreach ($directory as $name => $apiUrl) {
             echo "  🔍 Tentative de géolocalisation...\n";
             
             $coords = geocodeHackerspace($name);
-            
+
             if ($coords !== null) {
                 // Geocoding réussi ! Ajouter en tant que space static
                 $cache['spaces'][] = [
@@ -320,9 +320,6 @@ foreach ($directory as $name => $apiUrl) {
                 ];
                 $cache['stats']['static']++;
                 echo "  🔵 Géolocalisé: {$coords['lat']}, {$coords['lon']}\n";
-                
-                // Respecter le rate limit de Nominatim (1 req/sec)
-                sleep(1);
             } else {
                 // Geocoding échoué
                 $downSpaceNames[] = $name; // STOCKER le nom pour comparaison avec mapall
@@ -333,6 +330,12 @@ foreach ($directory as $name => $apiUrl) {
                     echo "  ⚠️  API indisponible + géolocalisation échouée (nouveau)\n";
                 }
             }
+
+            // Respecter le rate limit de Nominatim (1 req/sec) — doit s'appliquer
+            // après CHAQUE tentative, succès ou échec, sinon deux géolocalisations
+            // ratées d'affilée dépassent la limite et font bannir temporairement
+            // l'IP par Nominatim, ce qui fait échouer toutes les suivantes en cascade.
+            sleep(1);
         }
         continue;
     }
