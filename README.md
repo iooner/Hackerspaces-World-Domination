@@ -281,7 +281,7 @@ Ideas and planned upgrades — contributions welcome!
 ### Data & pipeline
 
 - [ ] **Linked spaces** — display `linked_spaces` from SpaceAPI (e.g. [LgHS](https://spaceapi.lghs.be/)) in the info card, with live status for each linked space and reverse links
-- [ ] **Nominatim investigation** — the Nominatim geocoding fallback currently fails 100% of the time server-side (~16 spaces lost as a result); needs a `curl` test in SSH to determine if the hosting provider blocks outbound requests to OSM
+- [x] **Nominatim investigation** — resolved: not a connectivity/hosting issue. `allow_url_fopen`, curl, DNS and TLS are all fine server-side, and requests to Nominatim return `200 OK`. The ~16 lost spaces are closed/inactive hackerspaces with no matching result on OpenStreetMap for `"<name> hackerspace"` — a legitimate empty search, not a failure. Also fixed a real bug found along the way: `sleep(1)` (Nominatim's 1 req/sec limit) only ran after a successful geocode, not after a failed one, risking a rate-limit ban on runs with consecutive misses.
 - [x] **Dead code cleanup** — remove `test_geojson.json` from the repo (already in `.gitignore`, needs a `git rm --cached`)
 
 ### Stats modal
