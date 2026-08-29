@@ -852,7 +852,9 @@
             });
 
             map.on('click', 'points', (e) => {
-                stopPulse();
+                deepLinkActive = false;
+                // showSpaceCard() appelle startPulse() en interne, qui fait déjà stopPulse() —
+                // pas besoin de l'appeler ici (contrairement aux flows avec flyTo différé).
                 showSpaceCard(e.features[0].properties, e.features[0].geometry.coordinates);
                 setShareHash(e.features[0].properties.name);
             });
@@ -900,7 +902,7 @@
             popup.getElement().querySelectorAll('button[data-leaf]').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const leaf = leaves[Number(btn.dataset.leaf)];
-                    stopPulse();
+                    deepLinkActive = false;
                     showSpaceCard(leaf.properties, leaf.geometry.coordinates);
                     setShareHash(leaf.properties.name);
                     popup.remove();
@@ -912,6 +914,12 @@
         // Marker HTML + CSS plutôt que repaint WebGL par frame : le navigateur
         // anime ça sur son compositeur, donc c'est fluide même sur machine modeste.
         let pulseMarker = null;
+        // Nom du space actuellement affiché dans la carte info (null si fermée) —
+        // permet à applyFilter() de détecter qu'un filtre masque le space sélectionné.
+        let selectedSpaceName = null;
+        // true pendant la fenêtre flyTo/moveend d'un deep-link (#space=...) —
+        // permet d'annuler proprement le callback différé si l'utilisateur agit entre-temps.
+        let deepLinkActive = false;
 
         function startPulse(coords, color) {
             stopPulse();
@@ -937,6 +945,7 @@
             const card = document.getElementById('space-card');
             const state = props.state || 'static';
             card.className = 'show state-' + state;
+            selectedSpaceName = props.name;
 
             if (coords) startPulse(coords, COLORS[state] || COLORS.static);
 
@@ -987,6 +996,8 @@
             document.getElementById('space-card').className = '';
             clearShareHash();
             stopPulse();
+            selectedSpaceName = null;
+            deepLinkActive = false;
         });
 
         // ── Filtres ─────────────────────────────────────────────
@@ -1021,6 +1032,16 @@
                 : { type: 'FeatureCollection', features: allData.features.filter(f => f.properties.state === currentFilter) };
             map.getSource('spaces').setData(data);
             document.getElementById('n-total').textContent = data.features.length;
+
+            // Le space sélectionné (carte info + pulse) peut disparaître du filtre —
+            // sans ça la carte reste ouverte et le pulse continue d'animer sur un point invisible.
+            if (selectedSpaceName && !data.features.some(f => f.properties.name === selectedSpaceName)) {
+                document.getElementById('space-card').className = '';
+                clearShareHash();
+                stopPulse();
+                selectedSpaceName = null;
+                deepLinkActive = false;
+            }
 
             // Sync boutons prompt
             document.querySelectorAll('.filter-btn[data-filter]').forEach(b => {
@@ -1288,7 +1309,16 @@
             const match = location.hash.match(/^#space=(.+)$/);
             if (!match) return false;
 
-            const name = decodeURIComponent(match[1].replace(/\+/g, ' '));
+            let name;
+            try {
+                name = decodeURIComponent(match[1].replace(/\+/g, ' '));
+            } catch (err) {
+                // % mal encodé (lien tapé/tronqué à la main, cas QR-code sur porte) —
+                // on ignore le deep-link plutôt que de faire planter tout le boot.
+                console.warn(`Deep-link: malformed hash "${match[1]}"`, err);
+                return false;
+            }
+
             const feature = findSpaceByName(name);
             if (!feature) {
                 console.warn(`Deep-link: space "${name}" not found`);
@@ -1298,11 +1328,18 @@
             // Attendre que le rendu soit stabilisé (couches points/clusters peintes)
             // plutôt qu'un délai arbitraire — sinon le flyTo démarre avant que la
             // source 'spaces' soit visible et l'animation paraît vide/trop rapide
+            deepLinkActive = true;
             map.once('idle', () => {
+                // Annulé entre-temps (sélection manuelle ou Échap) : ne rien faire.
+                if (!deepLinkActive) return;
                 stopPulse();
                 const coords = feature.geometry.coordinates;
                 map.flyTo({ center: coords, zoom: 14, duration: 2000 });
-                map.once('moveend', () => showSpaceCard(feature.properties, coords));
+                map.once('moveend', () => {
+                    if (!deepLinkActive) return;
+                    showSpaceCard(feature.properties, coords);
+                    deepLinkActive = false;
+                });
             });
             return true;
         }
@@ -1419,6 +1456,9 @@
 
             // Empêche l'auto-rotation de lancer un easeTo concurrent pendant le flyTo
             pauseSpin();
+            // Annule un deep-link en attente pour que son callback différé ne vienne
+            // pas écraser cette sélection manuelle une fois le flyTo terminé
+            deepLinkActive = false;
             // Coupe net le pulse précédent : pas de vieux marker visible pendant le vol
             stopPulse();
 
@@ -1459,6 +1499,10 @@
                 document.getElementById('space-card').className = '';
                 clearShareHash();
                 stopPulse();
+                selectedSpaceName = null;
+                // Empêche le flyTo/showSpaceCard différé d'un deep-link encore en vol de
+                // rouvrir la carte et de la re-pulser après que l'utilisateur a fermé
+                deepLinkActive = false;
                 if (searchBox.classList.contains('show')) {
                     searchBox.classList.remove('show');
                     searchToggle.classList.remove('active');
